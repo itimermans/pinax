@@ -15,6 +15,7 @@ dependencies = [
     "pandas",
     "plotly",
     "nptdms",
+
 ]
 
 [project.optional-dependencies]
@@ -22,7 +23,11 @@ dev = [
     "pytest>=8.0",
     "black",
     "flake8",
-    "isort"
+    "isort",
+    "jupyter",
+    "notebook",
+    "ipython",
+    "ipykernel"
 ]
 
 [build-system]
