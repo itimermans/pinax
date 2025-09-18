@@ -1,0 +1,46 @@
+[project]
+name = "pinax"
+# version is dynamic, managed by setuptools-scm
+dynamic = ["version"]
+description = "Tools to extract tabular data and perform structured analysis"
+authors = [
+    { name = "Inigo Timermans" }
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "numpy",
+    "pandas",
+    "plotly",
+    "nptdms",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "black",
+    "flake8",
+    "isort"
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel","setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+
+[tool.setuptools_scm]
+write_to = "src/pinax/_version.py"
