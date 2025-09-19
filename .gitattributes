@@ -1,0 +1,11 @@
+# Auto-detect text files and perform safe CRLF normalization
+* text=auto
+
+# Force Python files to use LF in the repository to avoid CRLF issues on macOS/Linux CI
+*.py text eol=lf
+
+# Notebooks are binary JSON; keep as-is but normalize line endings where safe
+*.ipynb merge=union
+
+# Mark data files as binary to avoid normalization
+*.tdms binary

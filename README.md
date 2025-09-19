@@ -11,7 +11,7 @@ Pinax is a modular Python library for extracting tabular data from various sourc
 ```bash
 pip install -e .
 ```
-Requires Python >=3.8. All dependencies are managed via `pyproject.toml`.
+Requires Python >=3.12. All dependencies are managed via `pyproject.toml`.
 
 ## Usage Example
 ```python
@@ -28,9 +28,30 @@ import pinax
 
 ## Development
 - Install dev dependencies:
-	```bash
-	pip install -e .[dev]
-	```
+		```bash
+		pip install -e .[dev]
+		```
+- Creating a local virtual environment (recommended):
+
+	- macOS / Linux (zsh / bash):
+	- macOS / Linux (zsh / bash):
+
+		```bash
+		python3 -m venv .venv
+		source .venv/bin/activate
+		# zsh treats [..] as glob patterns. Quote the extras or use the python -m pip form:
+		pip install -e '.[dev]'
+		# or equivalently (avoids shell expansion):
+		python -m pip install -e '.[dev]'
+		```
+
+	- Windows (PowerShell):
+
+		```powershell
+		python -m venv .venv
+		.\.venv\Scripts\Activate.ps1
+		pip install -e .[dev]
+		```
 - Run tests:
 	```bash
 	pytest
