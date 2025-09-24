@@ -1,8 +1,10 @@
 import os
 
+import ipywidgets as widgets
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+from IPython.display import display
 
 from .tdms_tools import TDMSFinder, df_from_fullTDMS
 
@@ -645,3 +647,475 @@ def table_functions(tests, table_categories, functions):
     # }
     # table_funs = table_functions(tests,table_cats,functions = functions)
     # table_funs
+
+
+class DataFrameViewer:
+    def __init__(
+        self,
+        dfs,
+        num_traces=2,
+        default_x="Time[s]",
+        default_y=None,
+        title="",
+        subtitle="",
+        autosize=False,
+        width=1000,
+        height=600,
+        showlegend=True,
+        auto_display=False,
+    ):
+        self.dfs = dfs
+        self.df_names = list(dfs.keys())
+        self.default_x = default_x
+        self.default_y = default_y
+        self.title = title
+        self.subtitle = subtitle
+        self.autosize = autosize
+        self.width = width
+        self.height = height
+        self.showlegend = showlegend
+        self.auto_display = auto_display
+
+        # Widget to select number of traces
+        self.num_traces = widgets.IntSlider(
+            value=num_traces, min=1, max=6, step=1, description="Number of Traces:"
+        )
+        self.y_axis_options = ["left", "right"]
+        self.tab = None
+
+        # Layout widgets
+        self.autosize_checkbox = widgets.Checkbox(
+            value=self.autosize, description="Autosize"
+        )
+        self.width_slider = widgets.IntSlider(
+            value=self.width, min=400, max=2000, step=10, description="Width"
+        )
+        self.height_slider = widgets.IntSlider(
+            value=self.height, min=300, max=1200, step=10, description="Height"
+        )
+        self.showlegend_checkbox = widgets.Checkbox(
+            value=self.showlegend, description="Show Legend"
+        )
+        self.legend_orientation = widgets.Dropdown(
+            options=["v", "h"], value="v", description="Legend Orientation"
+        )
+        self.legend_xanchor = widgets.Dropdown(
+            options=["auto", "left", "center", "right"],
+            value="left",
+            description="Legend X Anchor",
+        )
+        self.legend_yanchor = widgets.Dropdown(
+            options=["auto", "top", "middle", "bottom"],
+            value="top",
+            description="Legend Y Anchor",
+        )
+        self.legend_x = widgets.FloatSlider(
+            value=1, min=0, max=1, step=0.01, description="Legend X"
+        )
+        self.legend_y = widgets.FloatSlider(
+            value=1, min=0, max=1, step=0.01, description="Legend Y"
+        )
+
+        # Title/subtitle inputs
+        self.title_text = widgets.Text(value=self.title, description="Title")
+        self.subtitle_text = widgets.Text(value=self.subtitle, description="Subtitle")
+
+        # small colorpicker layout to save space (slightly larger for usability)
+        self.color_picker_layout = widgets.Layout(width="90px")
+
+        def on_autosize_change(change):
+            autosize = change["new"]
+            self.width_slider.disabled = autosize
+            self.height_slider.disabled = autosize
+            self.update_layout()
+
+        self.autosize_checkbox.observe(on_autosize_change, names="value")
+        self.width_slider.disabled = self.autosize_checkbox.value
+        self.height_slider.disabled = self.autosize_checkbox.value
+
+        self.group1 = widgets.VBox(
+            [widgets.Label("Figure Title"), self.title_text, self.subtitle_text]
+        )
+        self.group2 = widgets.VBox(
+            [
+                widgets.Label("Figure Size"),
+                self.autosize_checkbox,
+                self.width_slider,
+                self.height_slider,
+            ]
+        )
+        self.group3 = widgets.VBox(
+            [
+                widgets.Label("Legend Display"),
+                self.showlegend_checkbox,
+                self.legend_orientation,
+                self.legend_xanchor,
+                self.legend_yanchor,
+            ]
+        )
+        self.group4 = widgets.VBox(
+            [widgets.Label("Legend Position"), self.legend_x, self.legend_y]
+        )
+        self.layout_hbox = widgets.HBox(
+            [self.group1, self.group2, self.group3, self.group4]
+        )
+
+        # Create selectors for traces (each gets DF, Name, X, Y, Axis, Color)
+        (
+            self.df_selectors,
+            self.name_selectors,
+            self.x_selectors,
+            self.y_selectors,
+            self.axis_selectors,
+            self.color_selectors,
+        ) = self.create_selectors(self.num_traces.value)
+
+        # Persistent FigureWidget to avoid multiple outputs
+        self.figw = go.FigureWidget()
+        # Merge a user-visible config into the FigureWidget so it
+        # behaves like a regular Figure
+        # when using interactive edits. Use dict merge to combine any
+        # existing config with our defaults.
+        self.figw._config = getattr(self.figw, "_config", {}) | {
+            "editable": True,
+            "displayModeBar": True,
+            "displaylogo": False,
+            "edits": {"shapePosition": False, "annotationPosition": False},
+        }
+
+        self.init_fig(len(self.df_selectors))
+        self.bind_observers()
+        self.update_traces()
+        self.update_ui()
+        self.num_traces.observe(self.on_num_traces_change, names="value")
+
+        if self.auto_display:
+            display(self.ui)
+
+    def create_selectors(self, n, start_i=0):
+        # Narrow descriptions and fixed widths to reduce horizontal spacing
+        df_selectors = [
+            widgets.Dropdown(
+                options=self.df_names,
+                value=self.df_names[0],
+                description=f"Trace {i+1}:  DF:",
+                layout=widgets.Layout(width="200px"),
+                style={"description_width": "80px"},
+            )
+            for i in range(start_i, start_i + n)
+        ]
+        name_selectors = [
+            widgets.Text(
+                value=f"Trace {i+1}",
+                description="Name:",
+                layout=widgets.Layout(width="140px"),
+                style={"description_width": "50px"},
+            )
+            for i in range(start_i, start_i + n)
+        ]
+        x_selectors = []
+        y_selectors = []
+        axis_selectors = [
+            widgets.Dropdown(
+                options=self.y_axis_options,
+                value="left",
+                description="Axis:",
+                layout=widgets.Layout(width="100px"),
+                style={"description_width": "40px"},
+            )
+            for i in range(start_i, start_i + n)
+        ]
+        color_selectors = [
+            widgets.ColorPicker(
+                value=[
+                    "#ff0000",
+                    "#808080",
+                    "#0000ff",
+                    "#008000",
+                    "#ffa500",
+                    "#800080",
+                ][i % 6],
+                description="",
+                layout=self.color_picker_layout,
+            )
+            for i in range(start_i, start_i + n)
+        ]
+        for i, df_sel in enumerate(df_selectors):
+            cols = list(self.dfs[df_sel.value].columns)
+            x_default = (
+                self.default_x
+                if self.default_x in cols
+                else ("Time[s]" if "Time[s]" in cols else cols[0])
+            )
+            y_default = (
+                self.default_y
+                if self.default_y and self.default_y in cols
+                else (cols[1] if len(cols) > 1 else cols[0])
+            )
+            # Use Combobox for searchable column selection;
+            # ensure_option=True restricts to available columns
+            xw = widgets.Combobox(
+                options=cols,
+                value=x_default,
+                description="X:",
+                ensure_option=True,
+                placeholder="Search or type",
+                layout=widgets.Layout(width="180px"),
+                style={"description_width": "30px"},
+            )
+            yw = widgets.Combobox(
+                options=cols,
+                value=y_default,
+                description="Y:",
+                ensure_option=True,
+                placeholder="Search or type",
+                layout=widgets.Layout(width="180px"),
+                style={"description_width": "30px"},
+            )
+            x_selectors.append(xw)
+            y_selectors.append(yw)
+        return (
+            df_selectors,
+            name_selectors,
+            x_selectors,
+            y_selectors,
+            axis_selectors,
+            color_selectors,
+        )
+
+    def init_fig(self, n):
+        self.figw.data = []
+        for i in range(n):
+            self.figw.add_trace(go.Scatter(x=[], y=[], mode="lines"))
+        # set autosize properly
+        self.figw.layout.autosize = self.autosize_checkbox.value
+        if not self.autosize_checkbox.value:
+            self.figw.layout.width = self.width_slider.value
+            self.figw.layout.height = self.height_slider.value
+        else:
+            # when autosize, clear explicit width/height
+            self.figw.layout.width = None
+            self.figw.layout.height = None
+        self.figw.layout.xaxis = dict(title="Time [s]")
+        self.figw.layout.yaxis = dict(title="Left Y")
+        self.figw.layout.yaxis2 = dict(title="Right Y", overlaying="y", side="right")
+        self.figw.layout.showlegend = self.showlegend_checkbox.value
+        # set initial title
+        if self.title_text.value:
+            title = self.title_text.value
+            if self.subtitle_text.value:
+                self.figw.layout.title = dict(
+                    text=title, subtitle=dict(text=self.subtitle_text.value)
+                )
+            else:
+                self.figw.layout.title = dict(text=title)
+
+    def update_traces(self, change=None):
+        n = len(self.df_selectors)
+        # Adjust number of traces
+        if n > len(self.figw.data):
+            for _ in range(n - len(self.figw.data)):
+                self.figw.add_trace(go.Scatter(x=[], y=[], mode="lines"))
+        elif n < len(self.figw.data):
+            self.figw.data = tuple(self.figw.data[:n])
+        for i in range(n):
+            try:
+                dfi = self.dfs[self.df_selectors[i].value]
+                xcol = self.x_selectors[i].value
+                ycol = self.y_selectors[i].value
+                self.figw.data[i].x = dfi[xcol]
+                self.figw.data[i].y = dfi[ycol]
+                # Respect user-provided trace name if present
+                user_name = (
+                    self.name_selectors[i].value.strip()
+                    if hasattr(self.name_selectors[i], "value")
+                    else ""
+                )
+                if user_name:
+                    self.figw.data[i].name = user_name
+                else:
+                    self.figw.data[i].name = (
+                        f"{self.df_selectors[i].value} Trace {i+1}: {ycol}"
+                    )
+                self.figw.data[i].line = dict(color=self.color_selectors[i].value)
+                self.figw.data[i].yaxis = (
+                    "y" if self.axis_selectors[i].value == "left" else "y2"
+                )
+            except Exception as e:
+                self.figw.data[i].x = []
+                self.figw.data[i].y = []
+                self.figw.data[i].name = f"Error: {e}"
+        self.update_layout()
+
+    def update_layout(self, change=None):
+        self.figw.layout.showlegend = self.showlegend_checkbox.value
+        self.figw.layout.legend = dict(
+            xanchor=self.legend_xanchor.value,
+            yanchor=self.legend_yanchor.value,
+            x=self.legend_x.value,
+            y=self.legend_y.value,
+            orientation=self.legend_orientation.value,
+        )
+        # autosize handling
+        self.figw.layout.autosize = self.autosize_checkbox.value
+        if not self.autosize_checkbox.value:
+            self.figw.layout.width = self.width_slider.value
+            self.figw.layout.height = self.height_slider.value
+        else:
+            self.figw.layout.width = None
+            self.figw.layout.height = None
+        # set title/subtitle
+        if self.title_text.value:
+            title = self.title_text.value
+            if self.subtitle_text.value:
+                self.figw.layout.title = dict(
+                    text=title, subtitle=dict(text=self.subtitle_text.value)
+                )
+            else:
+                self.figw.layout.title = dict(text=title)
+        else:
+            # clear title if empty
+            self.figw.layout.title = None
+        # attempt to set xaxis range from first trace
+        try:
+            first_dfi = self.dfs[self.df_selectors[0].value]
+            first_x = self.x_selectors[0].value
+            self.figw.layout.xaxis.range = [
+                first_dfi[first_x].min(),
+                first_dfi[first_x].max(),
+            ]
+        except Exception:
+            pass
+
+    def bind_observers(self):
+        # bind per-trace observers
+        for i in range(len(self.df_selectors)):
+            # When df selection changes, update x/y options and refresh trace
+            def make_on_df(sel_idx):
+                def on_df_change(change):
+                    new_cols = list(self.dfs[change["new"]].columns)
+                    xw = self.x_selectors[sel_idx]
+                    yw = self.y_selectors[sel_idx]
+                    old_x = xw.value if hasattr(xw, "value") else None
+                    old_y = yw.value if hasattr(yw, "value") else None
+                    xw.options = new_cols
+                    yw.options = new_cols
+                    if old_x in new_cols:
+                        xw.value = old_x
+                    else:
+                        xw.value = (
+                            self.default_x
+                            if self.default_x in new_cols
+                            else ("Time[s]" if "Time[s]" in new_cols else new_cols[0])
+                        )
+                    if old_y in new_cols:
+                        yw.value = old_y
+                    else:
+                        yw.value = (
+                            self.default_y
+                            if self.default_y and self.default_y in new_cols
+                            else new_cols[0]
+                        )
+                    self.update_traces()
+
+                return on_df_change
+
+            self.df_selectors[i].observe(make_on_df(i), names="value")
+            # other observers for x/y/axis/color/name changes
+            self.x_selectors[i].observe(
+                lambda change, idx=i: self.update_traces(), names="value"
+            )
+            self.y_selectors[i].observe(
+                lambda change, idx=i: self.update_traces(), names="value"
+            )
+            self.axis_selectors[i].observe(
+                lambda change, idx=i: self.update_traces(), names="value"
+            )
+            self.color_selectors[i].observe(
+                lambda change, idx=i: self.update_traces(), names="value"
+            )
+            self.name_selectors[i].observe(
+                lambda change, idx=i: self.update_traces(), names="value"
+            )
+        # layout observers
+        self.autosize_checkbox.observe(
+            lambda change: self.update_layout(), names="value"
+        )
+        self.width_slider.observe(lambda change: self.update_layout(), names="value")
+        self.height_slider.observe(lambda change: self.update_layout(), names="value")
+        self.showlegend_checkbox.observe(
+            lambda change: self.update_layout(), names="value"
+        )
+        self.legend_orientation.observe(
+            lambda change: self.update_layout(), names="value"
+        )
+        self.legend_xanchor.observe(lambda change: self.update_layout(), names="value")
+        self.legend_yanchor.observe(lambda change: self.update_layout(), names="value")
+        self.legend_x.observe(lambda change: self.update_layout(), names="value")
+        self.legend_y.observe(lambda change: self.update_layout(), names="value")
+        self.title_text.observe(lambda change: self.update_layout(), names="value")
+        self.subtitle_text.observe(lambda change: self.update_layout(), names="value")
+
+    def update_ui(self):
+        global tab
+        selector_boxes = [
+            widgets.HBox(
+                [
+                    self.df_selectors[i],
+                    self.name_selectors[i],
+                    self.x_selectors[i],
+                    self.y_selectors[i],
+                    self.axis_selectors[i],
+                    self.color_selectors[i],
+                ],
+                layout=widgets.Layout(
+                    display="flex",
+                    flex_flow="row wrap",
+                    align_items="center",
+                    gap="6px",
+                ),
+            )
+            for i in range(len(self.df_selectors))
+        ]
+        trace_selector_vbox = widgets.VBox([self.num_traces] + selector_boxes)
+        if self.tab is None:
+            self.tab = widgets.Tab(children=[trace_selector_vbox, self.layout_hbox])
+            self.tab.set_title(0, "Trace Selector")
+            self.tab.set_title(1, "Layout")
+        else:
+            self.tab.children = [trace_selector_vbox, self.layout_hbox]
+            self.tab.set_title(0, "Trace Selector")
+            self.tab.set_title(1, "Layout")
+        self.ui = widgets.VBox([self.figw, self.tab])
+
+    def on_num_traces_change(self, change):
+        new_n = change["new"]
+        current_n = len(self.df_selectors)
+        if new_n > current_n:
+            (
+                additional_df,
+                additional_name,
+                additional_x,
+                additional_y,
+                additional_axis,
+                additional_color,
+            ) = self.create_selectors(new_n - current_n, current_n)
+            self.df_selectors.extend(additional_df)
+            self.name_selectors.extend(additional_name)
+            self.x_selectors.extend(additional_x)
+            self.y_selectors.extend(additional_y)
+            self.axis_selectors.extend(additional_axis)
+            self.color_selectors.extend(additional_color)
+        elif new_n < current_n:
+            self.df_selectors = self.df_selectors[:new_n]
+            self.name_selectors = self.name_selectors[:new_n]
+            self.x_selectors = self.x_selectors[:new_n]
+            self.y_selectors = self.y_selectors[:new_n]
+            self.axis_selectors = self.axis_selectors[:new_n]
+            self.color_selectors = self.color_selectors[:new_n]
+        self.bind_observers()
+        self.update_traces()
+        self.update_ui()
+
+    def display(self):
+        display(self.ui)
