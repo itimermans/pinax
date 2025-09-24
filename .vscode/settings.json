@@ -56,5 +56,8 @@
     },
     "terminal.integrated.defaultProfile.linux": "bash-no-conda",
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "todo-tree.tree.showBadges": true,
+    "python-envs.defaultEnvManager": "ms-python.python:venv",
+    "python-envs.defaultPackageManager": "ms-python.python:pip",
 }

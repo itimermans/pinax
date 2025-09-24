@@ -3,20 +3,12 @@ name = "pinax"
 # version is dynamic, managed by setuptools-scm
 dynamic = ["version"]
 description = "Tools to extract tabular data and perform structured analysis"
-authors = [
-    { name = "Inigo Timermans" }
-]
+authors = [{ name = "Inigo Timermans" }]
 license = { file = "LICENSE" }
 readme = "README.md"
 requires-python = ">=3.12"
 
-dependencies = [
-    "numpy",
-    "pandas",
-    "plotly",
-    "nptdms",
-
-]
+dependencies = ["numpy", "pandas", "plotly", "nptdms"]
 
 [project.optional-dependencies]
 dev = [
@@ -27,15 +19,16 @@ dev = [
     "jupyter",
     "notebook",
     "ipython",
-    "ipykernel"
+    "ipykernel",
+    "pyarrow",
 ]
 
 [build-system]
-requires = ["setuptools>=61.0", "wheel","setuptools-scm"]
+requires = ["setuptools>=61.0", "wheel", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
